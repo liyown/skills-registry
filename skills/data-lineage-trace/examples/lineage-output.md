@@ -59,8 +59,11 @@
 
 ### Findings
 
-- `LIN-CROSS-BORDER` — the field crosses `eu-west-1` → `us-east-1` (Stripe). The DPA is in place; the cross-border notice is in the consent record.
-- (no other findings)
+- (no findings after bad→good transition; the bad-lineage.md issues — no encryption, no consent, no deletion propagation — are all addressed by the good-lineage.md Fix 1/2/3. The cross-border note is informational, not a defect.)
+
+### Cross-border note
+
+- The field crosses `eu-west-1` → `us-east-1` (Stripe). The DPA is in place; the cross-border notice is in the consent record. This is *not* a finding; it is a residency note for the consumer of the lineage report.
 
 ---
 
