@@ -1,3 +1,10 @@
+---
+name: goal-driven-development
+description: "Use this skill to orchestrate an existing goal or spec through the dev flow. Load when the user asks for end-to-end feature execution, a goal-to-PR pipeline, or any task that crosses spec → implementation → review → knowledge capture. The skill is a thin router: it names the 6 phases (spec intake, blast-radius check, implementation, verification, review gate, knowledge capture) and the skill that does the work for each phase. Do NOT use for: a single review (load the matching `*-code-reviewer` directly), or for a generic author-craft task like TDD / debugging / brainstorming (use obra/superpowers). Complementary to the 17 enterprise-flow skills; for the planned v0.6.1+ skills, the orchestrator names which of them does the work for each phase."
+metadata:
+  short-description: Spec → code orchestration with per-phase skill routing
+---
+
 # Goal Driven Development
 
 Use this skill to orchestrate an existing goal or spec through the dev flow. The skill itself is a thin router — the actual work is done by the language-specific reviewers and the planned enterprise-flow skills in `docs/rfcs/2026-06-10-enterprise-flow-skills.md`.

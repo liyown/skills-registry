@@ -37,6 +37,15 @@ npx skills add liyown/superpower-enterprise --skill node-code-reviewer
 npx skills add liyown/superpower-enterprise --skill spec-doc-linter
 npx skills add liyown/superpower-enterprise --skill goal-driven-development
 npx skills add liyown/superpower-enterprise --skill project-knowledge-capture
+npx skills add liyown/superpower-enterprise --skill enterprise-stack
+npx skills add liyown/superpower-enterprise --skill data-lineage-trace
+npx skills add liyown/superpower-enterprise --skill code-ownership-impact
+npx skills add liyown/superpower-enterprise --skill incident-call-trace
+npx skills add liyown/superpower-enterprise --skill progressive-rollout-checklist
+npx skills add liyown/superpower-enterprise --skill compliance-control-walk
+npx skills add liyown/superpower-enterprise --skill observability-coverage-audit
+npx skills add liyown/superpower-enterprise --skill cross-team-rfc-draft
+npx skills add liyown/superpower-enterprise --skill pr-authoring
 
 # or install everything in the collection
 npx skills add liyown/superpower-enterprise
@@ -56,21 +65,17 @@ Install is idempotent — re-running updates existing skills in place.
 | `goal-driven-development` | turning an existing spec into code with verification, review gates, and knowledge capture | `executing-plans` |
 | `project-knowledge-capture` | done with a task and want durable post-impl knowledge persisted into `docs/knowledge/` | — |
 | `spec-doc-linter` | syncing a module's DevAgent.md or a domain's CONTEXT.md with the code | — |
-
-## Planned Skills (v0.6.1+, see `docs/rfcs/2026-06-10-enterprise-flow-skills.md`)
-
-| Planned skill | Trigger | Superpowers neighbour |
-| --- | --- | --- |
+| `enterprise-stack` | single install point that inventories the whole collection | — |
 | `data-lineage-trace` | where does a regulated field come from / who reads it / deletion propagation | (none) |
 | `code-ownership-impact` | rename / deprecate / schema change / cross-team / CODEOWNERS | `writing-plans` |
 | `incident-call-trace` | incident / outage / postmortem / on-call / SLO breach | `systematic-debugging` |
 | `progressive-rollout-checklist` | feature flag / canary / dark launch / rollout / rollback | `finishing-a-development-branch` |
 | `compliance-control-walk` | SOX / ISO / SOC 2 / GDPR / HIPAA / PCI / audit / control walkthrough | `verification-before-completion` |
-| `cross-team-rfc-draft` | RFC / design doc / cross-team review / dependency request | `brainstorming` → `writing-plans` |
 | `observability-coverage-audit` | blind spot / missing alert / coverage audit / gap analysis | `test-driven-development` |
+| `cross-team-rfc-draft` | RFC / design doc / cross-team review / dependency request | `brainstorming` → `writing-plans` |
 | `pr-authoring` | 写 PR / PR 描述 / 整理 commit / 准备合入 | `requesting-code-review` |
 
-When the planned skills land, this table is updated and the per-skill `npx skills add` line in `prompts/inventory.md` is filled in.
+The collection has 17 skills as of v0.6.1. The 8 planned skills from the v0.5.0 RFC have all shipped.
 
 ## When To Load This Skill
 
