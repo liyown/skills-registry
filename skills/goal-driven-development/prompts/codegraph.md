@@ -2,39 +2,58 @@
 
 > See also: prompts/workflow.md
 
-
 CodeGraph defaults to `@colbymchenry/codegraph`. It exposes a code knowledge graph through MCP/CLI, suitable for "where is it implemented", "who calls whom", "what does this change affect", and "what is the call path".
+
+The currently-exposed MCP tool list (verify with `codegraph --help` after install):
+
+| Tool | Purpose |
+| --- | --- |
+| `codegraph_explore` | **Primary tool** — answers "how does X work" / flow questions in one call. Absorbs what older docs called `codegraph_context` and `codegraph_trace`. |
+| `codegraph_search` | Find symbols by name across the codebase. |
+| `codegraph_callers` | Upstream callers of a function / method. |
+| `codegraph_callees` | Downstream callees. |
+| `codegraph_impact` | Affected code radius for a symbol change. |
+| `codegraph_node` | One symbol's details + full source (returns all overloads for ambiguous names). |
+| `codegraph_files` | Indexed file structure (faster than `fs` scan). |
+| `codegraph_status` | Index health and statistics. |
+
+> **Note on prior names.** The earlier 6-tool surface (`codegraph_context`, `codegraph_trace`, etc.) is no longer exposed by the MCP server. Treat `codegraph_explore` as the primary "give me context for this goal / trace this path" tool; reserve the named tools above for narrower queries.
 
 ## Priority
 
 ### 1. CodeGraph MCP (preferred)
 
-First call `codegraph_status` to check that the index is ready, then:
+First call `codegraph_status` to confirm the index is ready, then:
 
-- `codegraph_context`: task context for a goal summary
-- `codegraph_search`: locate by symbol name
-- `codegraph_callers` / `codegraph_callees`: upstream and downstream
-- `codegraph_trace`: end-to-end call path
-- `codegraph_impact`: change impact radius
-- `codegraph_files`: see the structure of indexed files
+- `codegraph_explore` — primary walk; one call answers "how does X work" end-to-end and returns a relationship map.
+- `codegraph_search` — locate by symbol name.
+- `codegraph_callers` / `codegraph_callees` — upstream and downstream.
+- `codegraph_impact` — change impact radius.
+- `codegraph_node` — full source for one symbol.
+- `codegraph_files` — see the structure of indexed files.
 
 ### 2. CodeGraph CLI (fallback)
 
 When MCP is unavailable but the CLI works, use:
 
-- `codegraph status`, `codegraph context`, `codegraph query`, `codegraph impact`, `codegraph affected`
-- If the repo is not initialised, suggest `codegraph init -i`
+- `codegraph status` — index health.
+- `codegraph query <symbol>` — symbol search.
+- `codegraph callers <symbol>` / `codegraph callees <symbol>` — upstream / downstream.
+- `codegraph impact <symbol>` — change radius.
+- `codegraph affected` — files affected by a planned set of changes.
+- `codegraph files` — file tree.
+- If the repo is not initialised, suggest `codegraph init -i`.
 
 ### 3. Fallback (no CodeGraph)
 
-Only when `codegraph_status` reports unavailability (not installed, not indexed, version mismatch, cannot reach the service) do you fall back to local means. **Fallback has a cost** — a question CodeGraph answers in one query often needs 2-5 manual `rg`/file reads in fallback mode, so only ask questions that actually affect the implementation path.
+Only when `codegraph_status` reports unavailability (not installed, not indexed, version mismatch, cannot reach the service) do you fall back to local means. **Fallback has a cost** — a question CodeGraph answers in one query often needs 2-5 manual `rg` / file reads in fallback mode, so only ask questions that actually affect the implementation path.
 
 Fallback order:
 
-1. `rg` (ripgrep) for precise symbol/string/file pattern search
-2. Language service / IDE reference (`tsc --noEmit`, `go doc`, `javap`, JSDoc / PyDoc comments)
-3. Infer behaviour from test naming conventions (`*_test.go`, `*.spec.ts`, `OrderServiceTest`)
-4. Source-code read of the entry path (1-2 levels of calls from the entry)
+1. `rg` (ripgrep) for precise symbol / string / file pattern search.
+2. Language service / IDE reference (`tsc --noEmit`, `go doc`, `javap`, JSDoc / PyDoc comments).
+3. Infer behaviour from test naming conventions (`*_test.go`, `*.spec.ts`, `OrderServiceTest`).
+4. Source-code read of the entry path (1-2 levels of calls from the entry).
 
 **Mandatory declaration**: regardless of the fallback path, after the CodeGraph context phase you must include the following line in the final report:
 
@@ -63,8 +82,8 @@ Stop CodeGraph calls and switch to the implementation phase when any of the foll
 
 ## Typical Queries
 
-- Find entry: `codegraph_context` with goal summary
-- Find callers: `codegraph_callers` on service/handler/function symbol
-- Find impact: `codegraph_impact` on changed symbol
-- Find path: `codegraph_trace` from controller/route to persistence/external call
-- Find test entry: `codegraph_files` filtered with `*test*` + `codegraph_context` with query "tests for <symbol>"
+- Find entry: `codegraph_explore` with goal summary.
+- Find callers: `codegraph_callers` on service / handler / function symbol.
+- Find impact: `codegraph_impact` on changed symbol.
+- Find path: `codegraph_explore` from controller / route to persistence / external call.
+- Find test entry: `codegraph_files` filtered with `*test*` + `codegraph_explore` with query "tests for <symbol>".
