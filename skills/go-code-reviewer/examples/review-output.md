@@ -1,54 +1,67 @@
 # Critical
 
-## 1. 支付扣款缺少订单归属和并发状态保护
+## 1. Payment endpoint missing order ownership and concurrent-state guard leads to cross-user charge and duplicate deduction
 
-位置：
+Location:
 `example.BadOrderService.Pay`
 
-问题：
-方法按 `orderID` 查询订单后直接扣款，没有校验 `order.UserID == userID`，也没有带旧状态的条件更新。并发请求可能同时读到未支付状态并重复扣款。
+Problem:
+The method looks up the order by `orderID` and charges it without verifying `order.UserID == userID` and without a status-conditional update. Concurrent requests can both read `UNPAID` and both proceed to charge.
 
-影响：
-可能导致越权支付其他用户订单、重复扣款和订单状态错乱，属于资损风险。
+Impact:
+Likely cross-user payment, duplicate deduction, and order-state corruption. This is a capital-loss risk.
 
-建议：
-按 `orderID + userID` 查询订单；扣款前后使用唯一支付流水或带旧状态的条件更新保证幂等；扣款和状态更新失败时要有明确补偿或一致性设计。
+Suggestion:
+Look up the order by `(orderID, userID)`. Use a unique payment-flow id or a status-conditional update (`UPDATE ... WHERE status = 'UNPAID'`) for the deduction, and check the affected row count. On any failure, define an explicit compensation or refund path.
 
-推荐代码：
+Recommended code:
 ```go
 var o Order
-err := s.db.QueryRowContext(ctx, "SELECT id, user_id, amount, status FROM orders WHERE id = ? AND user_id = ?", orderID, userID).Scan(...)
+err := s.db.QueryRowContext(ctx,
+    "SELECT id, user_id, amount, status FROM orders WHERE id = ? AND user_id = ?",
+    orderID, userID,
+).Scan(&o.ID, &o.UserID, &o.Amount, &o.Status)
 if errors.Is(err, sql.ErrNoRows) {
     return ErrOrderNotFound
 }
-res, err := s.db.ExecContext(ctx, "UPDATE orders SET status = 'PAYING' WHERE id = ? AND status = 'UNPAID'", orderID)
+if o.Status == "PAID" {
+    return nil
+}
+res, err := s.db.ExecContext(ctx,
+    "UPDATE orders SET status = 'PAYING' WHERE id = ? AND status = 'UNPAID'", orderID,
+)
 if n, _ := res.RowsAffected(); n != 1 {
     return ErrConcurrentUpdate
 }
 ```
 
-## 2. SQL 直接字符串拼接导致注入
+## 2. fmt.Sprintf with integer in SQL string can degrade into injection if the field type weakens
 
-位置：
+Location:
 `example.BadOrderService.Pay`
 
-问题：
-`fmt.Sprintf("SELECT ... WHERE id = %d", orderID)` 把整数拼到 SQL 中，未使用 `?` 占位符或 prepared statement。若 `orderID` 类型后续被弱化为 string 或上游允许可控输入，将出现 SQL 注入。
+Problem:
+`fmt.Sprintf("SELECT ... WHERE id = %d", orderID)` concatenates the id into the SQL string. Today the field is `int64`, but the type can be weakened later, or the parameter can be changed to a string with user input.
 
-影响：
-攻击者可控输入可改变 SQL 语义，造成数据泄露、破坏性写入或权限绕过。
+Impact:
+An attacker who can control the field can change SQL semantics, leak data, perform destructive writes, or bypass permission checks. This is a SQL-injection vulnerability.
 
-建议：
-统一使用 `?` 占位符：`s.db.QueryRowContext(ctx, "SELECT ... WHERE id = ?", orderID)`。
+Suggestion:
+Always use `?` placeholders with prepared statements, regardless of the column's Go type.
+
+Recommended code:
+```go
+row := s.db.QueryRowContext(ctx, "SELECT ... WHERE id = ?", orderID)
+```
 
 # High
 
-## 1. goroutine 启动后无法随请求取消而停止
+## 1. Goroutine outlives the request and is not cancellable
 
-位置：
+Location:
 `example.BadOrderService.Pay`
 
-问题：
+Problem:
 ```go
 go func() {
     for m := range msgs {
@@ -56,67 +69,116 @@ go func() {
     }
 }()
 ```
-启动时未与 `ctx.Done()` 联动，handler 又使用 `context.Background()`，请求取消时 goroutine 不会被中断。
+The goroutine is not bound to a `ctx.Done()` and the handler uses `context.Background()`, so the goroutine continues to run after the request is cancelled.
 
-影响：
-用户断开后 worker 仍在持续处理消息并占用下游资源，goroutine 数量随流量线性累积。
+Impact:
+Worker goroutines accumulate linearly with traffic, hold downstream resources, and never release. In a long-running process this is a slow, hard-to-see goroutine leak that exhausts memory and file descriptors.
 
-建议：
-传入请求 ctx：`go func() { for m := range msgs { handleMessage(ctx, m) } }()`，并 `defer close(msgs)` 或在 `ctx.Done()` 后退出。
+Suggestion:
+Pass the request context into the goroutine, and exit on `ctx.Done()`. Close the input channel from the producer side on shutdown.
 
-## 2. fmt %v 包装错误导致 errors.Is 失败
+Recommended code:
+```go
+go func() {
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case m, ok := <-msgs:
+            if !ok {
+                return
+            }
+            handleMessage(ctx, m)
+        }
+    }
+}()
+```
 
-位置：
+## 2. fmt.Errorf with %v breaks errors.Is / errors.As
+
+Location:
 `example.BadOrderService.Pay`
 
-问题：
-`fmt.Errorf("order paid: %v", sql.ErrNoRows)` 使用 `%v`，wrap 链断裂，上游 `errors.Is(err, sql.ErrNoRows)` 永远为 false。
+Problem:
+`fmt.Errorf("order paid: %v", sql.ErrNoRows)` uses `%v`, which formats the value but does not chain the error. `errors.Is(err, sql.ErrNoRows)` always returns false for the wrapped error.
 
-影响：
-本应转化为 404/业务已支付的查询会被当成未知错误返回 5xx，影响可用性指标。
+Impact:
+A query that should resolve to "not found" or "already paid" is reported as an unknown 5xx, degrading the availability metric and breaking any retry / circuit-breaker logic that depends on error identity.
 
-建议：
-改用 `%w`：`fmt.Errorf("order paid: %w", sql.ErrNoRows)`。
+Suggestion:
+Use `%w` to wrap; reserve `%v` for non-error values that you want to render into the message.
 
-## 3. HTTP 客户端无超时 + 请求路径 log.Fatal
+Recommended code:
+```go
+return fmt.Errorf("order paid: %w", sql.ErrNoRows)
+```
 
-位置：
+## 3. http.Client has no Timeout and the request path uses log.Fatal
+
+Location:
 `example.BadOrderService.Pay`
 
-问题：
-`http.Client` 未设置 `Timeout`，且慢请求失败时调用 `log.Fatal`，导致进程直接退出。
+Problem:
+`http.Client{}` is constructed without `Timeout`, and a slow downstream triggers `log.Fatal`, which calls `os.Exit(1)`.
 
-影响：
-下游支付服务抖动时，本服务会被整个进程终止，错误半径扩大。
+Impact:
+A flaky downstream terminates the entire process, blowing the error radius far beyond the failing call. A single slow dependency can take the whole service down.
 
-建议：
-为 `http.Client` 设置合理超时；`log.Fatal` 改为返回 error，由上层决定是否降级或熔断。
+Suggestion:
+Set a realistic per-request timeout. Return an error from the function and let the caller decide whether to degrade, retry, or trip a circuit breaker. Do not call `log.Fatal` from a request path.
+
+Recommended code:
+```go
+client := &http.Client{Timeout: 5 * time.Second}
+resp, err := client.Do(req)
+if err != nil {
+    return fmt.Errorf("pay provider call: %w", err)
+}
+defer resp.Body.Close()
+```
 
 # Medium
 
-## 1. 锁被值接收者复制失去保护
+## 1. Mutex copied by value receiver loses its protection
 
-位置：
+Location:
 `example.Counter.Inc`
 
-问题：
-`Counter` 使用值接收者，`c.mu.Lock()` 复制了一份 mutex，原 `c.mu` 的状态不再反映到调用方。
+Problem:
+`Counter` uses a value receiver. Each call copies the receiver, including the embedded `sync.Mutex`. The caller's mutex state is no longer the mutex being locked.
 
-影响：
-并发调用 `Inc` 时不同副本上的锁互不感知，`c.n` 会出现 race。
+Impact:
+Concurrent calls to `Inc` lock different copies of the mutex, so the increments race. `go test -race` will flag this; production data will show a `c.n` smaller than the number of increments.
 
-建议：
-改为指针接收者 `(c *Counter) Inc()`，并在调用处使用 `&counter`。
+Suggestion:
+Use a pointer receiver so the lock and the field are shared. Update the call site to pass `&counter`.
+
+Recommended code:
+```go
+func (c *Counter) Inc() {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.n++
+}
+```
 
 # Low
 
-## 1. 错误日志缺上下文
+## 1. Error log carries no request-scoped context
 
-位置：
+Location:
 `example.BadOrderService.Pay`
 
-问题：
-`log.Fatal(err)` 没有 `orderID`、`userID` 等关键维度，事后排障困难。
+Problem:
+`log.Fatal(err)` (and the surrounding logger calls) do not include the `orderID`, `userID`, or request id.
 
-建议：
-使用结构化日志并附加 `order_id`、`user_id` 字段后再退出或返回 error。
+Impact:
+When the service starts failing in production, on-call cannot correlate the log line with a specific user or request, and the post-mortem takes much longer than it should.
+
+Suggestion:
+Use a structured logger (`slog` / `zap` / `zerolog`) and pass `order_id`, `user_id`, and `request_id` as fields on every log line in the request path.
+
+Recommended code:
+```go
+slog.Error("pay failed", "order_id", orderID, "user_id", userID, "err", err)
+```

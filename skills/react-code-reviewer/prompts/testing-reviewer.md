@@ -1,5 +1,7 @@
 # React Testing Reviewer Prompt
 
+> See also: prompts/reviewer.md, prompts/error-boundary-reviewer.md, prompts/state-reviewer.md
+
 For unit, component, integration, and end-to-end test review in React / TypeScript projects using Jest, Vitest, React Testing Library, Playwright, or Cypress.
 
 ## Required Checks

@@ -28,7 +28,7 @@ Prioritize user-facing or production-risk defects: user error, authorization byp
 
 ## Severity
 
-- Critical: authorization bypass, sensitive data leak, XSS, capital/order-level business error, full-site unavailability.
+- Critical: authorization bypass, sensitive data leak, XSS, capital/order-level business error, full-site unavailability, transaction inconsistency / duplicate consumption.
 - High: clear user-data corruption, core flow interruption, severe async race, obvious performance failure.
 - Medium: boundary crash, hydration error, local state error, accessibility blocker.
 - Low: minor maintainability, naming, duplication, non-blocking optimization.

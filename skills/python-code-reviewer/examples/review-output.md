@@ -1,128 +1,229 @@
 # Critical
 
-## 1. Module-level mutable dict cross-request state
+## 1. Module-level mutable dict is cross-request, cross-worker shared state
 
-位置：
+Location:
 `OrderService.pay`
 
-问题：
+Problem:
 ```python
 HITS = {}
 ...
 HITS.setdefault(user_id, []).append(time.time())
 ```
-模块级 dict 跨所有请求、跨所有 worker 共享；ASGI 下请求会交错 `await`，写入无锁。
+A module-level `dict` is shared across every request and every worker. Under ASGI, requests interleave their `await` points, so writes to `HITS` race without any lock.
 
-影响：
-限流失效；多 worker 部署时各副本状态不一致；内存随请求数线性增长。
+Impact:
+Rate limiting silently fails. Multi-worker deployments diverge in their per-user counter state, allowing bursty abuse. The dict grows without bound for the lifetime of the process.
 
-建议：
-用 Redis 原子计数器 + 滑动窗口；或至少 per-process 字典 + LRU 清理。
+Suggestion:
+Move the counter to Redis with an atomic sliding-window (`ZADD` + `ZREMRANGEBYSCORE`), or — at minimum — scope it to a single process with an LRU cap and a per-key TTL.
 
-## 2. f-string into raw SQL causes injection
+Recommended code:
+```python
+# Redis-backed sliding window
+async def is_allowed(user_id: str) -> bool:
+    now = time.time()
+    key = f"hits:{user_id}"
+    pipe = redis.pipeline()
+    pipe.zremrangebyscore(key, 0, now - 60)
+    pipe.zadd(key, {str(now): now})
+    pipe.zcard(key)
+    pipe.expire(key, 60)
+    _, _, count, _ = await pipe.execute()
+    return count <= 100
+```
 
-位置：
+## 2. f-string interpolated into raw SQL causes injection
+
+Location:
 `OrderService.pay`
 
-问题：
+Problem:
 ```python
 text(f"SELECT * FROM orders WHERE id = {order_id} AND user_id = {user_id}")
 ```
-`text` 不会参数化字符串拼接。
+`text()` does not bind parameters that come from string interpolation. The values are pasted into the SQL string at format time.
 
-影响：
-攻击者构造 `order_id` 输入可改变 SQL 语义、绕过归属校验或拖库。
+Impact:
+An attacker who controls `order_id` or `user_id` (e.g. from a path or query parameter) can change SQL semantics, bypass ownership checks, or dump the entire `orders` table.
 
-建议：
-用绑定参数：`text("SELECT * FROM orders WHERE id = :id AND user_id = :uid")` 并 `.params(id=order_id, uid=user_id)`。
+Suggestion:
+Use bound parameters: a parameterised SQL string with `.params(...)`.
 
-## 3. Sync requests inside async handler blocks event loop
+Recommended code:
+```python
+stmt = text("SELECT * FROM orders WHERE id = :id AND user_id = :uid")
+result = await session.execute(stmt, {"id": order_id, "uid": user_id})
+```
 
-位置：
+## 3. Synchronous requests inside an async handler blocks the event loop
+
+Location:
 `create_order_async`
 
-问题：
-`requests.post` 是同步阻塞调用，在 async handler 中会卡住 event loop worker。
+Problem:
+`requests.post(...)` is a blocking call. Calling it from an `async def` handler suspends the event loop worker for the duration of the HTTP round-trip.
 
-影响：
-同一 worker 上其他请求全部延迟；高并发下整个服务不可用。
+Impact:
+Every other request served by the same worker is delayed for as long as the downstream call takes. Under load, the service's p99 climbs and eventually every worker is stuck, which is the canonical "asyncio but synchronous I/O" outage.
 
-建议：
-改 `httpx.AsyncClient` 并 `await client.post(...)`，或 `await asyncio.get_running_loop().run_in_executor(None, requests.post, ...)`。
+Suggestion:
+Use an async HTTP client. If a sync client is unavoidable, run it through `loop.run_in_executor` so the event loop is released.
+
+Recommended code:
+```python
+async def create_order_async(payload: dict) -> dict:
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        resp = await client.post(PAYMENT_URL, json=payload)
+        resp.raise_for_status()
+        return resp.json()
+```
 
 ## 4. Status transition has no WHERE-clause guard
 
-位置：
+Location:
 `OrderService.pay`
 
-问题：
+Problem:
 ```python
 text(f"UPDATE orders SET status = 'PAID' WHERE id = {order_id}")
 ```
-不带 `AND status = 'UNPAID'` 旧状态条件，并发请求可同时通过校验后重复扣款。
+The update does not include `AND status = 'UNPAID'`. Two concurrent requests can both pass the `PAID` check and both call this update.
 
-影响：
-重复扣款、资损。
+Impact:
+Duplicate deduction and order-state corruption. This is a capital-loss risk.
 
-建议：
-加条件：`WHERE id = :id AND status = 'UNPAID'`；先看 affected rows，0 行则放弃。
+Suggestion:
+Add a status-conditional update and check the affected row count. If 0 rows were updated, the order was already paid by a concurrent caller — return without charging.
 
-## 5. pickle.loads on user input → arbitrary code execution
+Recommended code:
+```python
+stmt = text("UPDATE orders SET status = 'PAID' WHERE id = :id AND status = 'UNPAID'")
+result = await session.execute(stmt, {"id": order_id})
+if result.rowcount != 1:
+    return  # already paid or does not exist
+```
 
-位置：
+## 5. pickle.loads on untrusted input → arbitrary code execution
+
+Location:
 `load_blob`
 
-问题：
-`pickle.loads` 反序列化时执行任意代码。
+Problem:
+`pickle.loads(blob)` runs arbitrary code at deserialisation time.
 
-影响：
-攻击者上传恶意 blob 即可在服务上跑任意命令。
+Impact:
+An attacker who can submit a blob (file upload, message queue, Redis value) executes arbitrary commands as the service user. This is total takeover, not data corruption.
 
-建议：
-改用 JSON / MessagePack / protobuf；如必须 pickle，至少校验签名或限制来源为受信队列。
+Suggestion:
+Replace `pickle` with a data-only format (JSON, MessagePack, protobuf). If you must accept Python objects, use a signed pickle from a trusted source only.
+
+Recommended code:
+```python
+import json
+
+def load_blob(blob: bytes) -> dict:
+    return json.loads(blob)
+```
 
 # High
 
-## 1. Fire-and-forget asyncio task loses exceptions
+## 1. Fire-and-forget asyncio task loses exceptions and the result
 
-位置：
+Location:
 `fan_out`
 
-问题：
-`asyncio.create_task(coro())` 后没持有引用也没 `await`，异常丢失。
+Problem:
+`asyncio.create_task(coro())` is called without holding the task reference and without `await`. If `coro` raises, the exception is never observed; if the process restarts, the in-flight task is gone.
 
-影响：
-子任务失败不传播，监控看不到；进程重启时丢失在途任务。
+Impact:
+Silent failures: monitoring never sees the error, the user never gets the result, and on graceful shutdown the work is lost.
 
-建议：
-持有 task 引用后 `await`；或在 `create_task` 后注册 `task.add_done_callback(handle_exception)`；或用 `asyncio.TaskGroup` 自动收集。
+Suggestion:
+Hold the task reference, `await` (or schedule with `asyncio.TaskGroup` in 3.11+), and register a `done_callback` to log any exception that escapes.
 
-## 2. except Exception returns None hides failures
+Recommended code:
+```python
+tasks = [asyncio.create_task(coro(arg)) for arg in args]
+for t in tasks:
+    t.add_done_callback(_log_task_exception)
+await asyncio.gather(*tasks)
+```
 
-位置：
+## 2. except Exception returning False hides real failures as "not executed"
+
+Location:
 `charge_card`
 
-问题：
-捕获后只 `return False`，调用方无法区分"扣款失败"与"未执行"。
+Problem:
+```python
+try:
+    charge_card(order)
+except Exception:
+    return False
+```
+The handler catches everything and returns `False`. The caller cannot distinguish "card was charged but post-processing failed" from "charge was never attempted".
 
-影响：
-业务上视为成功，导致漏单 / 重复扣款。
+Impact:
+Business treats the order as paid while the user was never charged (silent loss) or vice versa (silent double-charge on retry).
 
-建议：
-捕获具体异常类型，重抛业务异常：`except PaymentError as e: raise OrderProcessingError("charge failed") from e`。
+Suggestion:
+Catch a narrow exception type, log with full context, and re-raise as a domain error that the caller can map to a clear response.
+
+Recommended code:
+```python
+try:
+    charge_card(order)
+except PaymentError as e:
+    logger.exception("charge failed", extra={"order_id": order.id})
+    raise OrderProcessingError("charge failed") from e
+```
 
 # Medium
 
 ## 1. N+1 in find_orders
 
-位置：
+Location:
 `find_orders`
 
-问题：
-对每个 id 单独 `SELECT`，N 个 id = N 次往返。
+Problem:
+For each id in the input list, the function issues a separate `SELECT` against the database.
 
-影响：
-大 id 列表时数据库 QPS 暴涨，延迟线性放大。
+Impact:
+A list of N ids becomes N round-trips. Database QPS scales with the number of ids per call, latency scales with the same factor, and connection-pool pressure spikes under load.
 
-建议：
-用 `IN (?, ?, ...)` 一次查：`text("SELECT id, status FROM orders WHERE id IN :ids")` + `expanding` 参数或手工拼接占位符。
+Suggestion:
+Batch the lookup with a single `IN` clause. For SQLAlchemy 2.x async, `session.execute(select(Order).where(Order.id.in_(ids)))` is sufficient.
+
+Recommended code:
+```python
+async def find_orders(ids: list[int]) -> list[Order]:
+    if not ids:
+        return []
+    stmt = select(Order).where(Order.id.in_(ids))
+    result = await session.execute(stmt)
+    return list(result.scalars())
+```
+
+# Low
+
+## 1. Time-format string uses local timezone implicitly
+
+Location:
+`OrderService.pay`
+
+Problem:
+`now.strftime("%Y-%m-%d %H:%M:%S")` uses the local timezone of the Python process, which differs between containers and dev laptops.
+
+Impact:
+Timestamps in logs and DB rows are inconsistent across environments, which makes incident timelines and audit logs unreliable.
+
+Suggestion:
+Render timestamps in UTC explicitly. Use ISO 8601 (`now.isoformat()`) for portability.
+
+Recommended code:
+```python
+from datetime import datetime, timezone
+now = datetime.now(timezone.utc).isoformat()
+```

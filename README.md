@@ -20,9 +20,10 @@ now ends with "so the next developer (or the next session) can
 answer 'why was this done' and 'what to be careful about' in
 minutes, not days". 1 commit since v0.3.8.
 
-All 7 skill frontmatter descriptions now end with a
-severity-tier router clause. 4 commits of router tuning across
-v0.3.8 and v0.3.9.
+All 5 reviewer frontmatter descriptions end with a production-incident
+router clause. The 2 workflow-skill descriptions end with a "Use when
+..." clause scoped to the workflow trigger. 4 commits of router tuning
+across v0.3.8 and v0.3.9.
 
 See [docs/CHANGELOG.md](./docs/CHANGELOG.md) for the full release history
 and per-version highlights. Run `git log v0.3.8..v0.3.9` for the full
@@ -37,6 +38,7 @@ npx skills add liyown/skills-registry --skill react-code-reviewer
 npx skills add liyown/skills-registry --skill go-code-reviewer
 npx skills add liyown/skills-registry --skill python-code-reviewer
 npx skills add liyown/skills-registry --skill node-code-reviewer
+npx skills add liyown/skills-registry --skill spec-doc-linter
 npx skills add liyown/skills-registry --skill goal-driven-development
 npx skills add liyown/skills-registry --skill project-knowledge-capture
 
@@ -81,6 +83,7 @@ install that other skill separately. Concrete cases in this collection:
 - `node-code-reviewer` — Node.js backend production-risk review (async, error handling, Prisma, Express/Fastify, security).
 - `goal-driven-development` — CodeGraph-assisted implementation workflow for existing specs/goals.
 - `project-knowledge-capture` — durable project knowledge capture into `docs/knowledge/`.
+- `spec-doc-linter` — DevAgent.md / CONTEXT.md drift detection with per-file auto-sync.
 
 ## Skills at a Glance
 
@@ -93,10 +96,10 @@ uses to decide whether to load the skill.
 | Skill | Load when you are … |
 | --- | --- |
 | `java-code-reviewer` | … reviewing a Java / Spring / MyBatis / Kafka / Reactor change |
-| `react-code-reviewer` | … reviewing a React / TypeScript / Next.js change (frontend, not Node backend) |
-| `go-code-reviewer` | … reviewing a Go / gRPC / sqlx change |
+| `react-code-reviewer` | … reviewing a React / TypeScript / Next.js / Vite change (frontend, not Node backend) |
+| `go-code-reviewer` | … reviewing a Go / gRPC / sqlx / GORM change |
 | `python-code-reviewer` | … reviewing a Python / asyncio / SQLAlchemy / FastAPI change |
-| `node-code-reviewer` | … reviewing a Node.js / Express / Fastify / Prisma / TypeORM change |
+| `node-code-reviewer` | … reviewing a Node.js / Express / Fastify / Koa / Hono / Prisma / TypeORM / Sequelize / Knex change |
 
 Each reviewer ships a `prompts/reviewer.md` (severity ladder + output
 contract) and 6-10 scenario-specific prompts (see the Coverage
@@ -110,6 +113,12 @@ common production-risk findings.
 | --- | --- |
 | `goal-driven-development` | … turning an existing spec into code with verification, review gates, and knowledge capture |
 | `project-knowledge-capture` | … done with a task and want durable project knowledge persisted into `docs/knowledge/` |
+
+### Tools (load when keeping docs in sync)
+
+| Skill | Load when you are … |
+| --- | --- |
+| `spec-doc-linter` | … syncing a module's DevAgent.md or a domain's CONTEXT.md with the code (Tier-1 static + Tier-2 LLM judgment, per-file y/n/q confirmation) |
 
 These are not reviewers; they are end-to-end workflows that may
 invoke the reviewers as helpers. See "Cross-Skill Dependencies"
@@ -125,6 +134,7 @@ reviewer covers; cell entries are the scenario prompt file names.
 | --- | --- | --- | --- | --- | --- |
 | Framework / runtime | `spring-reviewer.md` | `nextjs-reviewer.md` | `rpc-reviewer.md` | `web-reviewer.md` | `http-reviewer.md` |
 | Concurrency / async | `concurrency-reviewer.md`, `reactor-reviewer.md` | — | `concurrency-reviewer.md` | `async-reviewer.md` | `async-reviewer.md` |
+| Context propagation | — | — | `context-reviewer.md` | — | — |
 | Error handling | — | `error-boundary-reviewer.md` | `error-reviewer.md` | `error-reviewer.md` | `error-reviewer.md` |
 | Database / ORM | `mybatis-reviewer.md` | — | `sql-reviewer.md` | `sql-reviewer.md` | `sql-reviewer.md` |
 | Caching / messaging | `redis-kafka-reviewer.md` | — | — | — | — |
@@ -195,25 +205,11 @@ Quick version:
 
 ## Local Checks
 
-```sh
-./scripts/validate.sh
-```
-
-Runs structural assertions without external toolchains (no `go`, no
-`javac`, no `tsc` required):
-
-- **`scripts/smoke.sh`** — every `skills/<name>/SKILL.md` has valid
-  frontmatter, a matching directory name, and resolves every
-  `prompts/` and `examples/` path it references.
-- **`scripts/check-examples.sh`** — every reviewer has a `bad-*` /
-  `good-*` pair, every `good-*` is non-trivial and self-identifies,
-  and no stray filenames slipped into `examples/`.
-- **`scripts/release.sh`** — cut a release: reads `git describe`,
-  bumps the version, runs `validate.sh`, tags, and pushes. See the
-  script header for flags (`--dry-run`, `--bump-mode`, `--notes-from`,
-  `--no-publish`).
-
-Use `validate.sh` as a local pre-merge check or as a CI step.
+This repo ships text only — there is no build step, no test runner,
+and no linter. A skill is correct if it is a self-contained folder
+that an agent can copy verbatim. Review the contributor contract in
+[CONTRIBUTING.md](./CONTRIBUTING.md) for the frontmatter, prompt, and
+example-pairing rules that govern a merge.
 
 ## License
 

@@ -1,6 +1,6 @@
 ---
 name: react-code-reviewer
-description: Review React, TypeScript, Next.js, and Vite frontend changes for production-risk bugs in hooks, state, async effects, routing, authorization UI, SSR/CSR boundaries, hydration, security, accessibility, performance, forms, validation, testing, error boundaries, bundle size, state management, and maintainability — focusing on user-data-leak, XSS, authz-bypass, and incident-causing defects. Use for React code review, frontend PR review, diff review, release-risk inspection, or any review where a user-facing incident is the worst case.
+description: Review React, TypeScript, Next.js, and Vite frontend changes for production-risk bugs in hooks, state, async effects, routing, authorization UI, SSR/CSR boundaries, hydration, security, accessibility, performance, forms, validation, testing, error boundaries, bundle size, state management, and maintainability — focusing on user-data-leak, XSS, authz-bypass, and incident-causing defects. Use for useEffect/cleanup correctness, Server/Client boundary mistakes, hydration mismatches, XSS in dangerouslySetInnerHTML, and incident-blocking PR review. Do NOT use for: Tailwind/CSS aesthetics, accessibility audits unrelated to a diff, or non-incident review.
 metadata:
   short-description: Evidence-driven React frontend review
 ---

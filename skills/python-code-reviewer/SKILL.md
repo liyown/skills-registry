@@ -1,6 +1,6 @@
 ---
 name: python-code-reviewer
-description: Review Python backend services, pull requests, diffs, and snippets for production-risk bugs in asyncio, async/await, GIL, exception handling, type hints, SQLAlchemy/Django ORM, FastAPI/aiohttp, dependencies, security, and microservice architecture — focusing on capital-loss, data-corruption, authorization-bypass, and incident-causing defects. Use for Python code review, PR review, diff review, bug-risk review, architecture review, release-blocking inspection, or any review where a production incident is the worst case.
+description: Review Python backend services, pull requests, diffs, and snippets for production-risk bugs in asyncio, async/await, GIL, exception handling, type hints, SQLAlchemy/Django ORM, FastAPI/aiohttp, dependencies, security, and microservice architecture — focusing on capital-loss, data-corruption, authorization-bypass, and incident-causing defects. Use for asyncio event-loop blocking, requests-inside-async, pickle.loads, SQLAlchemy N+1, and incident-blocking PR review. Do NOT use for: PEP 8 style nits, type-hint pedantry, or non-incident review.
 metadata:
   short-description: Evidence-driven Python backend review
 ---

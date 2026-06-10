@@ -1,24 +1,24 @@
 # Critical
 
-## 1. 支付扣款缺少订单归属和幂等并发控制
+## 1. Payment endpoint missing order ownership and idempotency guard leads to cross-user charge and duplicate deduction
 
-位置：
+Location:
 `BadOrderService#doPay`
 
-问题：
-方法只按 `orderId` 查询订单，没有校验订单是否属于当前 `userId`，并且 `PAID` 判断和后续扣款、改状态之间没有状态条件更新或幂等流水约束。并发请求可能同时读到未支付状态并重复扣款。
+Problem:
+The method looks up the order by `orderId` only — it does not check that the order belongs to the current `userId`, and the `PAID` check followed by the deduction and status update is not protected by a state-conditional update or a unique payment-flow id. Concurrent requests can both read `UNPAID` and both proceed to charge.
 
-影响：
-可能导致越权支付其他用户订单、重复扣款和订单状态错乱，属于资损风险。
+Impact:
+Likely cross-user payment, duplicate deduction, and order-state corruption. This is a capital-loss risk.
 
-建议：
-按 `orderId + userId` 查询订单，扣款前后使用唯一支付流水或带旧状态条件的更新保证幂等；扣款和状态更新失败时要有明确补偿或一致性设计。
+Suggestion:
+Look up the order by `(orderId, userId)`. Use a unique payment-flow id or a status-conditional update (`UPDATE ... WHERE status = 'UNPAID'`) for the deduction, and check the affected row count. On any failure, define an explicit compensation or refund path.
 
-推荐代码：
+Recommended code:
 ```java
 Order order = orderMapper.selectByIdAndUserId(orderId, userId);
 if (order == null) {
-    throw new BizException("订单不存在");
+    throw new BizException("order not found");
 }
 if ("PAID".equals(order.getStatus())) {
     return;
@@ -30,21 +30,21 @@ if (updated != 1) {
 }
 ```
 
-## 2. SQL 排序字段直接拼接导致注入
+## 2. MyBatis-Plus wrapper.last concatenation with user-controlled sort causes SQL injection
 
-位置：
+Location:
 `BadOrderService#search`
 
-问题：
-`wrapper.last("order by " + sort)` 将外部传入的 `sort` 直接拼接进 SQL，`last()` 不会做参数绑定。
+Problem:
+`wrapper.last("order by " + sort)` concatenates the user-supplied `sort` argument directly into the SQL fragment. `last()` does not bind parameters; whatever string the caller supplies is appended verbatim.
 
-影响：
-攻击者可构造恶意排序参数改变 SQL 语义，造成数据泄露、异常查询或破坏性 SQL 执行，具体影响取决于数据库和连接权限。
+Impact:
+An attacker can craft a sort parameter that changes SQL semantics, leaks data, raises errors, or — depending on DB user and connection rights — executes destructive statements. This is a SQL-injection vulnerability.
 
-建议：
-使用白名单映射排序字段和方向，不允许任意字符串进入 SQL 片段。
+Suggestion:
+Use a whitelist map from sort key to column name. Do not let arbitrary strings reach the SQL fragment.
 
-推荐代码：
+Recommended code:
 ```java
 Map<String, String> sortColumns = Map.of(
     "createdTime", "created_time",
@@ -56,48 +56,85 @@ wrapper.orderByDesc(column);
 
 # High
 
-## 1. 同类方法内部调用导致事务不生效
+## 1. Self-invocation skips the Spring AOP proxy and silently disables @Transactional
 
-位置：
+Location:
 `BadOrderService#pay`
 
-问题：
-`pay()` 直接调用同类中的 `doPay()`，Spring AOP 代理不会拦截该内部调用，`doPay()` 上的 `@Transactional` 可能不生效。
+Problem:
+`pay()` calls `this.doPay()` directly. Spring AOP proxies do not intercept self-invocations, so the `@Transactional` on `doPay()` is silently bypassed.
 
-影响：
-扣款、远程支付和订单状态更新无法保证事务边界；异常时可能出现账户已扣减但订单未更新的中间状态。
+Impact:
+Deduction, remote payment, and order-state update run outside any transaction boundary. On failure, the user can be charged but the order stays in `UNPAID` — the canonical "money taken, order not updated" intermediate state that requires manual reconciliation.
 
-建议：
-将事务方法移动到独立 Bean，通过 Spring 代理调用；或让外层公开方法承载事务边界。
+Suggestion:
+Move the transactional method to a separate bean and call it through the Spring proxy, or carry the transaction boundary on the outer public method.
+
+Recommended code:
+```java
+// In a separate @Service bean
+@Service
+public class OrderTransactionalOps {
+    @Transactional(rollbackFor = Exception.class)
+    public void doPay(Order order) { ... }
+}
+
+// Caller routes through the proxy
+orderTransactionalOps.doPay(order);
+```
 
 # Medium
 
-## 1. 订单和账户对象未判空直接访问
+## 1. Order and account objects dereferenced without null check
 
-位置：
+Location:
 `BadOrderService#doPay`
 
-问题：
-`orderMapper.selectById(orderId)` 和 `accountMapper.selectByUserId(userId)` 可能返回 null，后续直接访问 `order.getStatus()`、`order.getAmount()`、`account.getPayToken()`。
+Problem:
+`orderMapper.selectById(orderId)` and `accountMapper.selectByUserId(userId)` may both return null. The next lines access `order.getStatus()`, `order.getAmount()`, and `account.getPayToken()` unconditionally.
 
-影响：
-非法订单 ID、已删除账户或脏数据会触发 NPE，导致接口 500。
+Impact:
+An invalid order id, a soft-deleted account, or dirty data throws NPE, surfacing as HTTP 500 and breaking the user flow.
 
-建议：
-对查询结果做显式判空，并返回业务错误。
+Suggestion:
+Add explicit null checks on the query results and return a typed business error (`order not found`, `account not found`) instead of letting the NPE propagate.
+
+Recommended code:
+```java
+Order order = orderMapper.selectById(orderId);
+if (order == null) {
+    throw new BizException("order not found");
+}
+Account account = accountMapper.selectByUserId(userId);
+if (account == null) {
+    throw new BizException("account not found");
+}
+```
 
 # Low
 
-## 1. 批量取消在循环中逐条查库和更新
+## 1. Per-row query and update inside batch cancel
 
-位置：
+Location:
 `BadOrderService#batchCancel`
 
-问题：
-每个订单都单独查询和更新，订单数量大时会产生大量数据库往返。
+Problem:
+The batch cancel iterates the order ids and runs one `SELECT` and one `UPDATE` per order.
 
-影响：
-批量操作耗时随订单数线性放大，可能拖慢接口并增加数据库压力。
+Impact:
+The batch's wall-clock time grows linearly with the number of ids, drags the endpoint's p99 up, and increases connection-pool pressure under load.
 
-建议：
-批量查询订单后按条件批量更新，或限制批量大小并分批提交。
+Suggestion:
+Batch the lookup and update into a single `SELECT ... WHERE id IN (?, ?, ...)` and a single `UPDATE ... WHERE id IN (?, ?, ...)`, or cap the batch size and chunk the work.
+
+Recommended code:
+```java
+List<Order> orders = orderMapper.selectByIds(ids);
+List<Long> cancellable = orders.stream()
+    .filter(o -> "UNPAID".equals(o.getStatus()))
+    .map(Order::getId)
+    .toList();
+if (!cancellable.isEmpty()) {
+    orderMapper.batchCancel(cancellable);
+}
+```

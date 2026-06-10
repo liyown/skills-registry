@@ -13,6 +13,16 @@ Turn an existing spec or goal into a verifiable code change, and leave reusable 
    - Read the user-supplied spec, goal, task description, or issue.
    - Extract success criteria, explicit out-of-scope items, affected modules, verifiable results.
    - If the goal lacks an actionable entry, first search the repo for the closest implementation point; if still uncertain, ask.
+   - If the goal does not provide verifiable acceptance criteria, record the gap and ask before implementing. Acceptance-criteria template:
+
+     ```text
+     - Given <precondition>
+       When <action>
+       Then <observable result>
+     - Out of scope: <explicit non-goals>
+     - Affected modules: <files / packages / services>
+     - Verifiable: <test name, build target, screenshot, API call>
+     ```
 
 2. **CodeGraph context**
    - Get structural context via `prompts/codegraph.md`: prefer MCP, fall back to CLI, then to `rg` / file reading.
@@ -24,6 +34,7 @@ Turn an existing spec or goal into a verifiable code change, and leave reusable 
    - Implement the minimal viable change to meet the goal.
    - Prefer existing architecture, tools, test frameworks, and naming conventions.
    - When adding a new abstraction, it must reduce real complexity or match an existing pattern.
+   - Default change-size budget: ≤ ~200 lines of diff (excluding generated files, fixtures, and lockfiles). If the goal cannot be met within the budget, split the goal before implementing, or record the exception in the final report with the reason. The budget is a soft cap, not a gate; the goal's acceptance criteria are the gate.
 
 4. **Verification**
    - Run the tests, type checks, builds, or page verifications closest to the change.

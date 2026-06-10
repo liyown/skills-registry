@@ -186,8 +186,10 @@ examples/bad-wrapper-injection.java   examples/good-wrapper-injection.java
 examples/bad-goroutine-leak.go       examples/good-goroutine-leak.go
 ```
 
-`scripts/check-examples.sh` enforces this; do not skip the
-good side.
+`scripts/check-examples.sh` previously enforced this; that
+script has been removed. The pairing rule still applies — a `bad-`
+without a matching `good-` is half a teaching asset. Do not skip
+the good side.
 
 ### 4. Prompts have fallback contracts
 
@@ -236,8 +238,8 @@ in "Cross-Skill Dependencies".
 ### 8. Release is a single command
 
 Releases should be reproducible from the current state of `main`.
-This repo uses `scripts/release.sh --yes` to bump the tag, push,
-and let CI do the rest. Do not hand-edit tags; do not push tags
+Tag manually with `git tag -a vX.Y.Z -m "..."` and `git push origin
+vX.Y.Z`. Do not hand-edit tags after they are pushed.
 without the script unless the script is broken. If the script is
 broken, fix the script first, then release.
 

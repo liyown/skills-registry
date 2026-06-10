@@ -1,6 +1,6 @@
 ---
 name: java-code-reviewer
-description: Review Java backend projects, pull requests, diffs, and snippets for production-risk bugs in Spring Boot, Spring Cloud, MyBatis, MyBatis-Plus, Redis, Kafka, Reactor, WebFlux, transactions, concurrency, security, performance, DDD, and microservice architecture — focusing on capital-loss, data-corruption, authorization-bypass, and incident-causing defects. Use for Java code review, PR review, diff review, bug-risk review, architecture review, release-blocking inspection, or any review where a production incident is the worst case.
+description: Review Java backend projects, pull requests, diffs, and snippets for production-risk bugs in Spring Boot, Spring Cloud, MyBatis, MyBatis-Plus, Redis, Kafka, Reactor, WebFlux, transactions, concurrency, security, performance, DDD, and microservice architecture — focusing on capital-loss, data-corruption, authorization-bypass, and incident-causing defects. Use for transaction integrity, Spring proxy correctness, MyBatis wrapper safety, Redis/Kafka duplicate consumption, and incident-blocking PR review. Do NOT use for: code style, formatting, naming, lint, or other non-incident review.
 metadata:
   short-description: Evidence-driven Java backend review
 ---

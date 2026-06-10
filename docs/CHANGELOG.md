@@ -7,6 +7,9 @@ history for offline review.
 
 ## Unreleased
 
+- New skill `spec-doc-linter` for keeping `DevAgent.md` (per module) and `CONTEXT.md` (per domain folder) in sync with the code. Detects mechanical drift (renamed symbols, removed files, broken links, missing dependencies) and LLM-judgment drift (weakened invariants, anti-patterns newly violated, false concurrency / idempotency claims, broken domain boundaries, stale context maps). Auto-sync uses per-file y/n/q confirmation, no `--fix-all`. Sentinel: `未发现文档与代码漂移。`.
+- Dropped `scripts/{validate.sh, smoke.sh, check-examples.sh, release.sh}` and `.github/workflows/release-readiness.yml`. The repo is text only — there is no build step, no test runner, and no linter. Contributor contract is enforced by review against `CONTRIBUTING.md` rather than by a script.
+
 ## 0.3.9 (2026-06-08)
 
 Tag: `v0.3.9`. Commits since v0.3.8: 1.
