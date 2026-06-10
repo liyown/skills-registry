@@ -1,0 +1,17 @@
+diff --git a/src/main/java/com/example/order/DevAgent.md b/src/main/java/com/example/order/DevAgent.md
+index 1111111..2222222 100644
+--- a/src/main/java/com/example/order/DevAgent.md
++++ b/src/main/java/com/example/order/DevAgent.md
+@@ -8,7 +8,7 @@
+ - `BadOrderService.pay(userId: Long, orderId: Long): Unit`
+-- `BadOrderService.cancelMany(ids: List<Long>): Int`
+-- `BadOrderService.batchCancel(ids: List<Long>): Unit`
+-  - Cancels a list of orders in one call. **Idempotent** — calling
+-    twice with the same ids is a no-op.
++- `BadOrderService.cancelMany(ids: List<Long>): Int`
++  - Returns the number of orders that transitioned from
++    `UNPAID` to `CANCELLED`. Not idempotent; not atomic.
+@@ -27,3 +27,3 @@
+-- `sentry` (for emitting `OrderFailed` events)
++- `kafka` (for emitting `OrderPaid` events)
++- `sentry` (for emitting `OrderFailed` events)

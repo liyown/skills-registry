@@ -38,6 +38,7 @@ npx skills add liyown/skills-registry --skill react-code-reviewer
 npx skills add liyown/skills-registry --skill go-code-reviewer
 npx skills add liyown/skills-registry --skill python-code-reviewer
 npx skills add liyown/skills-registry --skill node-code-reviewer
+npx skills add liyown/skills-registry --skill spec-doc-linter
 npx skills add liyown/skills-registry --skill goal-driven-development
 npx skills add liyown/skills-registry --skill project-knowledge-capture
 
@@ -82,6 +83,7 @@ install that other skill separately. Concrete cases in this collection:
 - `node-code-reviewer` — Node.js backend production-risk review (async, error handling, Prisma, Express/Fastify, security).
 - `goal-driven-development` — CodeGraph-assisted implementation workflow for existing specs/goals.
 - `project-knowledge-capture` — durable project knowledge capture into `docs/knowledge/`.
+- `spec-doc-linter` — DevAgent.md / CONTEXT.md drift detection with per-file auto-sync.
 
 ## Skills at a Glance
 
@@ -111,6 +113,12 @@ common production-risk findings.
 | --- | --- |
 | `goal-driven-development` | … turning an existing spec into code with verification, review gates, and knowledge capture |
 | `project-knowledge-capture` | … done with a task and want durable project knowledge persisted into `docs/knowledge/` |
+
+### Tools (load when keeping docs in sync)
+
+| Skill | Load when you are … |
+| --- | --- |
+| `spec-doc-linter` | … syncing a module's DevAgent.md or a domain's CONTEXT.md with the code (Tier-1 static + Tier-2 LLM judgment, per-file y/n/q confirmation) |
 
 These are not reviewers; they are end-to-end workflows that may
 invoke the reviewers as helpers. See "Cross-Skill Dependencies"
