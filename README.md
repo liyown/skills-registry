@@ -197,25 +197,11 @@ Quick version:
 
 ## Local Checks
 
-```sh
-./scripts/validate.sh
-```
-
-Runs structural assertions without external toolchains (no `go`, no
-`javac`, no `tsc` required):
-
-- **`scripts/smoke.sh`** — every `skills/<name>/SKILL.md` has valid
-  frontmatter, a matching directory name, and resolves every
-  `prompts/` and `examples/` path it references.
-- **`scripts/check-examples.sh`** — every reviewer has a `bad-*` /
-  `good-*` pair, every `good-*` is non-trivial and self-identifies,
-  and no stray filenames slipped into `examples/`.
-- **`scripts/release.sh`** — cut a release: reads `git describe`,
-  bumps the version, runs `validate.sh`, tags, and pushes. See the
-  script header for flags (`--dry-run`, `--bump-mode`, `--notes-from`,
-  `--no-publish`).
-
-Use `validate.sh` as a local pre-merge check or as a CI step.
+This repo ships text only — there is no build step, no test runner,
+and no linter. A skill is correct if it is a self-contained folder
+that an agent can copy verbatim. Review the contributor contract in
+[CONTRIBUTING.md](./CONTRIBUTING.md) for the frontmatter, prompt, and
+example-pairing rules that govern a merge.
 
 ## License
 
